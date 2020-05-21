@@ -499,19 +499,19 @@ public class FsImageReporter {
             final long fileSize = FSImageLoader.getFileSize(f);
             pathStats.fileSize.observe(fileSize);
             if (f.hasModificationTime()) {
-                setMax(f.getModificationTime(), pathStats.lastModificationTime);
+                setIfGreater(pathStats.lastModificationTime, f.getModificationTime());
             }
         }
 
-        private static boolean setMax(final long diff, final AtomicLong atomic) {
+        private static void setIfGreater(final AtomicLong oldValue, final long newValue) {
             while (true) {
-                final long currentMax = atomic.get();
-                if (currentMax >= diff) {
-                    return false;
+                final long currentMax = oldValue.get();
+                if (currentMax >= newValue) {
+                    return;
                 }
-                final boolean setSuccess = atomic.compareAndSet(currentMax, diff);
+                final boolean setSuccess = oldValue.compareAndSet(currentMax, newValue);
                 if (setSuccess) {
-                    return true;
+                    return;
                 }
             }
         }
