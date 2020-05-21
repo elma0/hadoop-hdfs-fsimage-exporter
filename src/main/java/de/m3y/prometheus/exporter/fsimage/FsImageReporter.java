@@ -2,21 +2,28 @@ package de.m3y.prometheus.exporter.fsimage;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.util.*;
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.NoSuchElementException;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Function;
 import java.util.regex.Pattern;
+
+import org.apache.hadoop.fs.permission.PermissionStatus;
+import org.apache.hadoop.hdfs.server.namenode.FsImageProto;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import de.m3y.hadoop.hdfs.hfsa.core.FSImageLoader;
 import de.m3y.hadoop.hdfs.hfsa.core.FsVisitor;
 import io.prometheus.client.Histogram;
 import io.prometheus.client.SimpleCollector;
 import io.prometheus.client.Summary;
-import org.apache.hadoop.fs.permission.PermissionStatus;
-import org.apache.hadoop.hdfs.server.namenode.FsImageProto;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import static de.m3y.prometheus.exporter.fsimage.FsImageCollector.METRIC_PREFIX;
 import static de.m3y.prometheus.exporter.fsimage.FsImageCollector.MetricFamilySamples;
@@ -83,6 +90,7 @@ public class FsImageReporter {
         LongAdder sumDirectories = new LongAdder();
         LongAdder sumBlocks = new LongAdder();
         LongAdder sumSymLinks = new LongAdder();
+        AtomicLong lastModificationTime = new AtomicLong();
         final MetricAdapter fileSize;
 
         protected AbstractFileSystemStats(MetricAdapter fileSize) {
@@ -490,6 +498,22 @@ public class FsImageReporter {
             pathStats.sumBlocks.add(f.getBlocksCount());
             final long fileSize = FSImageLoader.getFileSize(f);
             pathStats.fileSize.observe(fileSize);
+            if (f.hasModificationTime()) {
+                setMax(f.getModificationTime(), pathStats.lastModificationTime);
+            }
+        }
+
+        private static boolean setMax(final long diff, final AtomicLong atomic) {
+            while (true) {
+                final long currentMax = atomic.get();
+                if (currentMax >= diff) {
+                    return false;
+                }
+                final boolean setSuccess = atomic.compareAndSet(currentMax, diff);
+                if (setSuccess) {
+                    return true;
+                }
+            }
         }
 
         @Override

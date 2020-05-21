@@ -7,12 +7,13 @@ import java.util.List;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import de.m3y.hadoop.hdfs.hfsa.core.FSImageLoader;
 import io.prometheus.client.Collector;
 import io.prometheus.client.Gauge;
 import io.prometheus.client.Summary;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * Loads FSImage and computes metrics.
@@ -24,16 +25,19 @@ class FsImageUpdateHandler {
     private static final String METRIC_POSTFIX_DIRS = "dirs";
     private static final String METRIC_POSTFIX_BLOCKS = "blocks";
     private static final String METRIC_POSTFIX_LINKS = "links";
+    private static final String METRIC_POSTFIX_MTIME = "mtime";
     static final String FSIZE = "fsize";
     static final String REPLICATION = "replication";
     static final String LABEL_USER_NAME = "user_name";
 
+    private static final String HELP_LAST_MODIFICATION_TIME = "Last modification time among all child files.";
     private static final String HELP_NUMBER_OF_SYM_LINKS = "Number of sym links.";
     private static final String HELP_NUMBER_OF_DIRECTORIES = "Number of directories.";
     private static final String HELP_NUMBER_OF_BLOCKS = "Number of blocks.";
 
     static class FsMetrics {
         private static final String[] EMPTY_LABEL_NAMES = new String[]{};
+        private final Gauge lastModificationTime;
         private final Gauge sumDirs;
         private final Gauge sumLinks;
         private final Gauge sumBlocks;
@@ -43,6 +47,10 @@ class FsImageUpdateHandler {
                     .name(prefix + METRIC_POSTFIX_DIRS)
                     .labelNames(labelNames)
                     .help(HELP_NUMBER_OF_DIRECTORIES).create();
+            lastModificationTime = Gauge.build()
+                    .name(prefix + METRIC_POSTFIX_MTIME)
+                    .labelNames(labelNames)
+                    .help(HELP_LAST_MODIFICATION_TIME).create();
             sumLinks = Gauge.build()
                     .name(prefix + METRIC_POSTFIX_LINKS)
                     .labelNames(labelNames)
@@ -62,10 +70,12 @@ class FsImageUpdateHandler {
                 sumDirs.set(fsStats.sumDirectories.doubleValue());
                 sumLinks.set(fsStats.sumSymLinks.doubleValue());
                 sumBlocks.set(fsStats.sumBlocks.doubleValue());
+                lastModificationTime.set(fsStats.lastModificationTime.longValue());
             } else {
                 sumDirs.labels(labelValues).set(fsStats.sumDirectories.doubleValue());
                 sumLinks.labels(labelValues).set(fsStats.sumSymLinks.doubleValue());
                 sumBlocks.labels(labelValues).set(fsStats.sumBlocks.doubleValue());
+                lastModificationTime.labels(labelValues).set(fsStats.lastModificationTime.longValue());
             }
         }
 
@@ -73,6 +83,7 @@ class FsImageUpdateHandler {
             mfs.addAll(sumDirs.collect());
             mfs.addAll(sumBlocks.collect());
             mfs.addAll(sumLinks.collect());
+            mfs.addAll(lastModificationTime.collect());
         }
     }
 
